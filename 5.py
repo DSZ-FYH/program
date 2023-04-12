@@ -1,5 +1,22 @@
 import math
 import numpy as np
+from numpy.linalg import lstsq  # 解超定方程
+from numpy.linalg import solve  # 解线性方程
+
+
+def Euler2Quaternion(pitch, roll, yaw):
+    q = np.array([
+        math.cos(yaw / 2) * math.cos(pitch / 2) * math.cos(roll / 2) -
+        math.sin(yaw / 2) * math.sin(pitch / 2) * math.sin(roll / 2),
+        math.cos(yaw / 2) * math.sin(pitch / 2) * math.cos(roll / 2) -
+        math.sin(yaw / 2) * math.cos(pitch / 2) * math.sin(roll / 2),
+        math.cos(yaw / 2) * math.cos(pitch / 2) * math.sin(roll / 2) +
+        math.sin(yaw / 2) * math.sin(pitch / 2) * math.cos(roll / 2),
+        math.cos(yaw / 2) * math.sin(pitch / 2) * math.sin(roll / 2) +
+        math.sin(yaw / 2) * math.cos(pitch / 2) * math.cos(roll / 2)
+    ]).reshape((4, 1))
+    return q
+
 
 # 参数设置
 IMU_frequency = 200
@@ -32,8 +49,6 @@ kalman_gap = 1
 # 数据单位转换
 GPS[:, 2:4] = GPS[:, 2:4] * rad  # 经纬度
 IMU[:, 2:5] = IMU[:, 2:5] / 3600 * rad  # 角速度
-# print(GPS.shape)
-# print(IMU)
 
 # 初值设置
 lon = GPS[kalman_start][3]
@@ -50,14 +65,31 @@ g = g0 * (1 + 0.00193185138639 * math.sin(lat)**2) / math.sqrt(
     1 - 0.00669437999013 * math.sin(lat)**2) * Re**2 / (Re + h)**2
 g_n = np.array([[0], [0], [-g]])
 w_ie_n = np.array([[0], [Wie * math.cos(lat)], [Wie * math.sin(lat)]])
-g_b = (-np.mean(IMU[0:5000, 5:8], 0) * g).T
-# w_ib_b = mean(IMU(1:5000,3:5))'
-# A = [g_n';w_ie_n';cross(g_n',w_ie_n')]
-# B = [g_b';w_ib_b';cross(g_b',w_ib_b')]
-# bCn =A\B
-# yaw = atan2(bCn(1,2), bCn(2,2))
-# roll = atan2(-bCn(3,1), bCn(3,3))
-# pitch = asin(bCn(3,2))
+g_b = -np.mean(IMU[0:5000, 5:8], 0) * g
+g_b = g_b.reshape(g_b.shape[0], 1)
+w_ib_b = np.mean(IMU[0:5000, 2:5], 0)
+w_ib_b = w_ib_b.reshape(w_ib_b.shape[0], 1)
 
-# q = Euler2Quaternion(pitch, roll, yaw)
-print(g_b)
+g_n_transpose = g_n.reshape(1, g_n.shape[0])
+w_ie_n_transpose = w_ie_n.reshape(1, w_ie_n.shape[0])
+
+A = np.array([
+    g_n_transpose, w_ie_n_transpose,
+    np.cross(g_n_transpose, w_ie_n_transpose)
+]).reshape((3, 3))
+
+g_b_transpose = g_b.reshape(1, g_b.shape[0])
+w_ib_b_transpose = w_ib_b.reshape(1, w_ib_b.shape[0])
+
+B = np.array([
+    g_b_transpose, w_ib_b_transpose,
+    np.cross(g_b_transpose, w_ib_b_transpose)
+]).reshape((3, 3))
+
+bCn = solve(A, B)
+
+yaw = math.atan2(bCn[0, 1], bCn[1, 1])
+roll = math.atan2(-bCn[2, 0], bCn[2, 2])
+pitch = math.asin(bCn[2, 1])
+
+q = Euler2Quaternion(pitch, roll, yaw)
