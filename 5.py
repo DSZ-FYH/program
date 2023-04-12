@@ -63,23 +63,21 @@ acc_bias = np.zeros((3, 1), dtype=np.float32)
 # 粗对准
 g = g0 * (1 + 0.00193185138639 * math.sin(lat)**2) / math.sqrt(
     1 - 0.00669437999013 * math.sin(lat)**2) * Re**2 / (Re + h)**2
-g_n = np.array([[0], [0], [-g]])
-w_ie_n = np.array([[0], [Wie * math.cos(lat)], [Wie * math.sin(lat)]])
-g_b = -np.mean(IMU[0:5000, 5:8], 0) * g
-g_b = g_b.reshape(g_b.shape[0], 1)
-w_ib_b = np.mean(IMU[0:5000, 2:5], 0)
-w_ib_b = w_ib_b.reshape(w_ib_b.shape[0], 1)
 
+g_n = np.array([[0], [0], [-g]])
 g_n_transpose = g_n.reshape(1, g_n.shape[0])
+w_ie_n = np.array([[0], [Wie * math.cos(lat)], [Wie * math.sin(lat)]])
 w_ie_n_transpose = w_ie_n.reshape(1, w_ie_n.shape[0])
+
+g_b_transpose = -np.mean(IMU[0:5000, 5:8], 0) * g
+g_b = g_b_transpose.reshape(g_b_transpose.shape[0], 1)
+w_ib_b_transpose = np.mean(IMU[0:5000, 2:5], 0)
+w_ib_b = w_ib_b_transpose.reshape(w_ib_b_transpose.shape[0], 1)
 
 A = np.array([
     g_n_transpose, w_ie_n_transpose,
     np.cross(g_n_transpose, w_ie_n_transpose)
 ]).reshape((3, 3))
-
-g_b_transpose = g_b.reshape(1, g_b.shape[0])
-w_ib_b_transpose = w_ib_b.reshape(1, w_ib_b.shape[0])
 
 B = np.array([
     g_b_transpose, w_ib_b_transpose,
@@ -93,3 +91,39 @@ roll = math.atan2(-bCn[2, 0], bCn[2, 2])
 pitch = math.asin(bCn[2, 1])
 
 q = Euler2Quaternion(pitch, roll, yaw)
+
+q_sins = q
+bCn_sins = bCn
+lon_sins = lon
+lat_sins = lat
+h_sins = h
+ve_sins = ve
+vn_sins = vn
+vu_sins = vu
+
+X_k = np.zeros((15, 1))
+
+array_temp_1 = np.column_stack((np.deg2rad(1) * np.ones(
+    (1, 3)), 0.01 * np.ones((1, 3)), (0.1 / Re), (0.1 / Re), 0.15,
+                                np.deg2rad(0.1 / 3600) * np.ones(
+                                    (1, 3)), (50e-6 * g0) * np.ones(
+                                        (1, 3)))).flatten()
+P_k = np.dot(np.diag(array_temp_1), np.diag(array_temp_1))
+
+data_save = np.zeros((kalman_end, 9))
+X_save = np.zeros((kalman_end, 15))
+P_save = np.zeros((kalman_end, 15))
+sins_save = np.zeros((kalman_end, 3))
+
+for i in range(0, kalman_end):
+    # 计算Rm和Rn
+    Rm = Re * (1 - 2 * f + 3 * f * math.sin(lat)**2)
+    Rn = Re * (1 + f * math.sin(lat)**2)
+
+    # # 去除有害角速度
+    # w_ie_n = [0;Wie*cos(lat);Wie*sin(lat)]
+    # w_en_n = [-vn/(Rm+h);ve/(Rn+h);ve/(Rn+h)*tan(lat)]
+    # w_in_n = w_ie_n + w_en_n
+    # w_in_b = bCn'*w_in_n
+    # w_ib_b = IMU(i,3:5)' - gyro_bias
+    # w_nb_b = w_ib_b - w_in_b
