@@ -18,6 +18,23 @@ def Euler2Quaternion(pitch, roll, yaw):
     return q
 
 
+def Quaternion2bCn(q):
+    C = np.zeros((3, 3))
+    C[0, 0] = q[0][0] * q[0][0] + q[1][0] * q[1][0] - q[2][0] * q[2][0] - q[3][
+        0] * q[3][0]
+    C[0, 1] = 2 * (q[1][0] * q[2][0] - q[0][0] * q[3][0])
+    C[0, 2] = 2 * (q[1][0] * q[3][0] + q[0][0] * q[2][0])
+    C[1, 0] = 2 * (q[1][0] * q[2][0] + q[0][0] * q[3][0])
+    C[1, 1] = q[0][0] * q[0][0] - q[1][0] * q[1][0] + q[2][0] * q[2][0] - q[3][
+        0] * q[3][0]
+    C[1, 2] = 2 * (q[2][0] * q[3][0] - q[0][0] * q[1][0])
+    C[2, 0] = 2 * (q[1][0] * q[3][0] - q[0][0] * q[2][0])
+    C[2, 1] = 2 * (q[2][0] * q[3][0] + q[0][0] * q[1][0])
+    C[2, 2] = q[0][0] * q[0][0] - q[1][0] * q[1][0] - q[2][0] * q[2][0] + q[3][
+        0] * q[3][0]
+    return C
+
+
 # 参数设置
 IMU_frequency = 200
 GPS_frequency = 1
@@ -120,10 +137,45 @@ for i in range(0, kalman_end):
     Rm = Re * (1 - 2 * f + 3 * f * math.sin(lat)**2)
     Rn = Re * (1 + f * math.sin(lat)**2)
 
-    # # 去除有害角速度
-    # w_ie_n = [0;Wie*cos(lat);Wie*sin(lat)]
-    # w_en_n = [-vn/(Rm+h);ve/(Rn+h);ve/(Rn+h)*tan(lat)]
-    # w_in_n = w_ie_n + w_en_n
-    # w_in_b = bCn'*w_in_n
-    # w_ib_b = IMU(i,3:5)' - gyro_bias
-    # w_nb_b = w_ib_b - w_in_b
+    # 去除有害角速度
+    w_ie_n = np.array([[0], [Wie * math.cos(lat)], [Wie * math.sin(lat)]])
+    w_en_n = np.array([[-vn / (Rm + h)], [ve / (Rn + h)],
+                       [ve / (Rn + h) * math.tan(lat)]])
+    w_in_n = w_ie_n + w_en_n
+    w_in_b = np.matmul(bCn.T, w_in_n)
+    w_ib_b = IMU[i, 2:5].reshape(IMU[i, 2:5].shape[0], 1) - gyro_bias
+    w_nb_b = w_ib_b - w_in_b
+
+    # 四元数更新
+    dTheta = w_nb_b * kalman_gap * IMU_dT
+    dTheta_norm = np.linalg.norm(dTheta)
+
+    q1 = np.array([
+        np.float64(math.cos(dTheta_norm / 2)),
+        float(-dTheta[0] / dTheta_norm * math.sin(dTheta_norm / 2)),
+        float(-dTheta[1] / dTheta_norm * math.sin(dTheta_norm / 2)),
+        float(-dTheta[2] / dTheta_norm * math.sin(dTheta_norm / 2))
+    ])
+    q2 = np.array([
+        float(dTheta[0] / dTheta_norm * math.sin(dTheta_norm / 2)),
+        np.float64(math.cos(dTheta_norm / 2)),
+        float(dTheta[2] / dTheta_norm * math.sin(dTheta_norm / 2)),
+        float(-dTheta[1] / dTheta_norm * math.sin(dTheta_norm / 2))
+    ])
+    q3 = np.array([
+        float(dTheta[1] / dTheta_norm * math.sin(dTheta_norm / 2)),
+        float(-dTheta[2] / dTheta_norm * math.sin(dTheta_norm / 2)),
+        np.float64(math.cos(dTheta_norm / 2)),
+        float(dTheta[0] / dTheta_norm * math.sin(dTheta_norm / 2))
+    ])
+    q4 = np.array([
+        float(dTheta[2] / dTheta_norm * math.sin(dTheta_norm / 2)),
+        float(dTheta[1] / dTheta_norm * math.sin(dTheta_norm / 2)),
+        float(-dTheta[0] / dTheta_norm * math.sin(dTheta_norm / 2)),
+        np.float64(math.cos(dTheta_norm / 2))
+    ])
+    q = np.matmul(np.array([q1, q2, q3, q4]), q)
+    q = q / np.linalg.norm(q)  # 单位化四元数
+    bCn = Quaternion2bCn(q)  # 更新Cbn阵
+
+    print("hello")
