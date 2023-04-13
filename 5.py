@@ -178,4 +178,46 @@ for i in range(0, kalman_end):
     q = q / np.linalg.norm(q)  # 单位化四元数
     bCn = Quaternion2bCn(q)  # 更新Cbn阵
 
+    # 重力加速度更新
+    g = g0 * (1 + 0.00193185138639 * math.sin(lat)**2) / math.sqrt(
+        1 - 0.00669437999013 * math.sin(lat)**2) * Re**2 / (Re + h)**2
+
+    # 速度更新
+    fb = (IMU[i, 5:8] * 9.8).reshape((IMU[i, 5:8].shape[0], 1)) - acc_bias
+    fn = np.matmul(bCn, fb)
+    # 比力方程
+    dv = np.array(fn - np.cross((2 * w_ie_n + w_en_n).reshape(
+        (1, -1)).flatten(), np.array([ve, vn, vu])).reshape(
+            (-1, 1)) + np.array([0, 0, -g]).reshape(
+                (np.array([0, 0, -g]).shape[0], 1))) * kalman_gap * IMU_dT
+
+    ve = ve + dv[0]
+    vn = vn + dv[1]
+    vu = vu + dv[2]
+
+    # 位置更新
+    lat = lat + vn * kalman_gap * IMU_dT / (Rm + h)
+    lon = lon + ve * kalman_gap * IMU_dT / ((Rn + h) * math.cos(lat))
+    h = h + vu * kalman_gap * IMU_dT
+
+    # 纯惯性捷联解算
+    w_ie_n_sins = np.array(
+        [0, Wie * math.cos(lat_sins), Wie * math.sin(lat_sins)]).reshape(
+            (-1, 1))
+    w_en_n_sins = np.array([
+        -vn_sins / (Rm + h_sins), ve_sins / (Rn + h_sins),
+        ve_sins / (Rn + h_sins) * math.tan(lat_sins)
+    ]).reshape((-1, 1))
+    w_in_n_sins = w_ie_n_sins + w_en_n_sins
+    w_in_b_sins = np.matmul(bCn_sins.transpose(), w_in_n_sins)
+    w_ib_b_sins = IMU[i, 2:5].reshape((-1, 1))
+    w_nb_b_sins = w_ib_b_sins - w_in_b_sins
+
+    print(w_ie_n_sins)
+    print(w_en_n_sins)
+    print(w_in_n_sins)
+    print(w_in_b_sins)
+    print(w_ib_b_sins)
+    print(w_nb_b_sins)
+
     print("hello")
