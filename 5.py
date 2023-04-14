@@ -387,5 +387,10 @@ for i in tqdm(range(0, kalman_end)):
     data_save[i,:] = np.array([lat,lon,h,pitch,roll,yaw,ve,vn,vu])
     
 
+np.savetxt("data_save.txt",data_save,delimiter=" ")
+np.savetxt("GPS.txt",GPS,delimiter=" ")
+np.savetxt("sins_save.txt",sins_save,delimiter=" ")
+np.savetxt("P_save.txt",P_save,delimiter=" ")
+
 print ("解算完成！")
 print ("开始绘图")
