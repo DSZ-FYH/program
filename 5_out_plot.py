@@ -1,3 +1,4 @@
+# *-* coding: utf-8 *-*
 import numpy as np
 import matplotlib.pyplot as plt
 import math
@@ -23,15 +24,24 @@ ax.legend(['滤波轨迹','GPS原始数据','纯惯性轨迹'])
 ax.grid(True)
 plt.show()
 
-# figure('name', '3D滤波结果');
-# plot3(data_save(:,1)*deg,data_save(:,2)*deg,data_save(:,3));
-# hold on;
-# plot3(GPS(1:i,3)*deg,GPS(1:i,4)*deg,GPS(1:i,5));
-# hold on;
-# plot3(sins_save(1:i,1)*deg,sins_save(1:i,2)*deg,sins_save(1:i,3));
-# title('3D滤波结果');
-# xlabel('纬度/°');
-# ylabel('经度/°');
-# zlabel('高度/h');
-# legend('滤波轨迹','GPS原始数据','纯惯性轨迹');
-# grid on;
+fig = plt.figure('2D滤波结果')
+plt.plot(data_save[:,0]*deg,data_save[:,1]*deg)
+plt.plot(GPS[:,2]*deg,GPS[:,3]*deg)
+plt.plot(sins_save[:,0]*deg,sins_save[:,1]*deg)
+plt.title('2D滤波结果')
+plt.xlabel('纬度/°')
+plt.ylabel('经度/°')
+plt.legend(['滤波轨迹','GPS原始数据','纯惯性轨迹'])
+plt.grid(True)
+plt.show()
+
+fig = plt.figure('位置滤波结果')
+plt.subplot(3,1,1)
+plt.plot(data_save[:,0]*deg)
+plt.plot(GPS[:,2]*deg)
+plt.title('纬度滤波结果')
+plt.xlabel('时间')
+plt.ylabel('纬度/°')
+plt.legend(['滤波轨迹','GPS原始数据'])
+plt.grid(True)
+
