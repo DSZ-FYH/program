@@ -213,11 +213,95 @@ for i in range(0, kalman_end):
     w_ib_b_sins = IMU[i, 2:5].reshape((-1, 1))
     w_nb_b_sins = w_ib_b_sins - w_in_b_sins
 
-    print(w_ie_n_sins)
-    print(w_en_n_sins)
-    print(w_in_n_sins)
-    print(w_in_b_sins)
-    print(w_ib_b_sins)
-    print(w_nb_b_sins)
+    dTheta = w_nb_b_sins*kalman_gap*IMU_dT
+    dTheta_norm = np.linalg.norm(dTheta)
+
+    q_sins1 = np.array([
+        np.float64(math.cos(dTheta_norm / 2)),
+        float(-dTheta[0] / dTheta_norm * math.sin(dTheta_norm / 2)),
+        float(-dTheta[1] / dTheta_norm * math.sin(dTheta_norm / 2)),
+        float(-dTheta[2] / dTheta_norm * math.sin(dTheta_norm / 2))
+    ])
+    q_sins2 = np.array([
+        float(dTheta[0] / dTheta_norm * math.sin(dTheta_norm / 2)),
+        np.float64(math.cos(dTheta_norm / 2)),
+        float(dTheta[2] / dTheta_norm * math.sin(dTheta_norm / 2)),
+        float(-dTheta[1] / dTheta_norm * math.sin(dTheta_norm / 2))
+    ])
+    q_sins3 = np.array([
+        float(dTheta[1] / dTheta_norm * math.sin(dTheta_norm / 2)),
+        float(-dTheta[2] / dTheta_norm * math.sin(dTheta_norm / 2)),
+        np.float64(math.cos(dTheta_norm / 2)),
+        float(dTheta[0] / dTheta_norm * math.sin(dTheta_norm / 2))
+    ])
+    q_sins4 = np.array([
+        float(dTheta[2] / dTheta_norm * math.sin(dTheta_norm / 2)),
+        float(dTheta[1] / dTheta_norm * math.sin(dTheta_norm / 2)),
+        float(-dTheta[0] / dTheta_norm * math.sin(dTheta_norm / 2)),
+        np.float64(math.cos(dTheta_norm / 2))
+    ])
+    q_sins = np.matmul(np.array([q_sins1, q_sins2, q_sins3, q_sins4]), q_sins)
+
+    q_sins = q_sins/np.linalg.norm(q_sins)      # 单位化四元数
+    bCn_sins = Quaternion2bCn(q_sins)           # 更新Cbn
+
+    fb_sins = IMU[i,5:8].reshape((-1,1))
+    fn_sins = np.matmul(bCn_sins,fb)
+    dv = np.array(fn_sins - np.cross((2 * w_ie_n_sins + w_en_n_sins).reshape(
+        (1, -1)).flatten(), np.array([ve_sins, vn_sins, vu_sins])).reshape(
+            (-1, 1)) + np.array([0, 0, -g]).reshape(
+                (np.array([0, 0, -g]).shape[0], 1))) * kalman_gap * IMU_dT # 比力方程 
+    ve_sins = ve_sins + dv[0]
+    vn_sins = vn_sins + dv[1]
+    vu_sins = vu_sins + dv[2]
+    
+    lat_sins = lat_sins + vn*kalman_gap*IMU_dT/(Rm+h)
+    lon_sins = lon_sins + ve*kalman_gap*IMU_dT/((Rn+h)*math.cos(lat))
+    h_sins = h_sins + vu*kalman_gap*IMU_dT
+
+    # 纯惯性数据保存
+    lat_sins = lat_sins[0]
+    lon_sins = lon_sins[0]
+    h_sins = h_sins[0]
+    sins_save[i,0:3] = [lat_sins,lon_sins,h_sins]
+
+    # 卡尔曼模型更新
+    F = np.zeros((15,15))
+    F[0,1] = Wie*math.sin(lat)+ ve/(Rn+h)*math.tan(lat)
+    F[0,2] = -(Wie*math.cos(lat)+ve/(Rn+h))
+    F[0,4] = -1/(Rm+h)
+    F[1,0] = -(Wie*math.sin(lat)+ve/(Rn+h)*math.tan(lat))
+    F[1,2] = -vn/(Rm+h)
+    F[1,3] = 1/(Rn+h)
+    F[1,6] = -Wie*math.sin(lat)
+    F[2,0] = Wie*math.cos(lat)+ve/(Rn+h)
+    F[2,1] = vn/(Rm+h)
+    F[2,3] = 1/(Rn+h)*math.tan(lat)
+    F[2,6] = Wie*math.cos(lat)+ve/(Rn+h)*1/math.cos(lat)**2
+    F[3,1] = -fn[2]# f_u天向比力
+    F[3,2] = fn[1]# f_n北向比力
+    F[3,3] = (vn*math.tan(lat)-vu)/(Rn+h)
+    F[3,4] = 2*Wie*math.sin(lat)+ve/(Rn+h)*math.tan(lat)
+    F[3,5] = -(2*Wie*math.cos(lat)+ve/(Rn+h))
+    F[3,6] = 2*Wie*math.cos(lat)*vn+ve*vn/(Rn+h)*1/math.cos(lat)**2+2*Wie*math.sin(lat)*vu
+    F[4,0] = fn[2]# f_u天向比力
+    F[4,2] = -fn[0]# f_e东向比力
+    F[4,3] = -(2*Wie*math.sin(lat)+ve/(Rn+h)*math.tan(lat))
+    F[4,4] = -vu/(Rm+h)
+    F[4,5] = -vn/(Rm+h)
+    F[4,6] = -(2*Wie*math.cos(lat)+ve/(Rn+h)*1/math.cos(lat)**2)*ve
+    F[5,0] = -fn[1]# f_n北向比力
+    F[5,1] = fn[0]# f_e东向比力
+    F[5,3] = 2*(Wie*math.cos(lat)+ve/(Rn+h))
+    F[5,4] = 2*vn/(Rm+h)
+    F[5,6] = -2*ve*Wie*math.sin(lat)
+    F[6,4] = 1/(Rm+h)
+    F[7,3] = 1/math.cos(lat)/(Rn+h)
+    F[7,6]= ve/(Rn+h)*1/math.cos(lat)*math.tan(lat)
+    F[8,5]  = 1
+    F[0:3,9:12] = bCn
+    F[3:6,12:15] = bCn
+
+    print(F)
 
     print("hello")
